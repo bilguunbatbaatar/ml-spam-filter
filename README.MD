@@ -1,7 +1,28 @@
-# Spam Email Filter
+# Spam Email Detection using Naive Bayes
 
-A machine learning project using Naive Bayes to classify spam emails.
+Machine learning project for detecting spam emails using a custom implementation of the Naive Bayes algorithm.
+
+## Team Members
+
+- Bilguun
+- Amin-Erdene
+- Zhargal
+- Bulganlham
+
+
+## Project Structure
+
+- data/ : dataset
+- src/ : source code
+- report/ : Quarto report
+- slides/ : presentation slides
 
 ## Run
 
-python src/main.py
+```bash
+python3 src/main.py
+```
+
+## Result
+
+Accuracy: 97.20%

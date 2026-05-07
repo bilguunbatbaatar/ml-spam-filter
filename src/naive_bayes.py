@@ -1,10 +1,9 @@
 import math
 from collections import Counter
 
-from tokenizer import tokenize
-from features import build_vocabulary
-from features import create_bow_matrix
-
+from src.tokenizer import tokenize
+from src.features import build_vocabulary
+from src.features import create_bow_matrix
 
 class NaiveBayes:
 

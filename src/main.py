@@ -1,9 +1,7 @@
-from dataset import read_dataset
-from naive_bayes import NaiveBayes
-
-from metrics import accuracy_score
-from metrics import confusion_matrix
-
+from src.dataset import read_dataset
+from src.naive_bayes import NaiveBayes
+from src.metrics import accuracy_score
+from src.metrics import confusion_matrix
 
 TRAIN_PATH = "data/train"
 DEV_PATH = "data/dev"

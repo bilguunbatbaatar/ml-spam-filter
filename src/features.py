@@ -1,4 +1,4 @@
-from tokenizer import tokenize
+from src.tokenizer import tokenize
 
 
 def build_vocabulary(emails):

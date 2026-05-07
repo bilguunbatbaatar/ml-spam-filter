@@ -1,0 +1,462 @@
+---
+jupyter: spam-filter
+title: "Наив Байесын алгоритмаар спам и-мэйл илрүүлэх нь"
+subtitle: ""
+abstract: Энэхүү ажлаар спам болон хэвийн и-мэйлүүдийг машин сургалтын Наив Байесын алгоритмын тусламжтай ангилах загвар боловсруулав. Текст өгөгдлийг Bag-of-Words аргаар тоон хэлбэрт хөрвүүлж, Лапласын smoothing ашиглан магадлалын загвар сургаж, улмаар хөгжүүлэлтийн өгөгдөл дээр үр дүнг үнэлэв. Судалгааны үр дүнд боловсруулсан загвар 97.20 хувийн нарийвчлалтай ажилласан.
+author: "Б.Билгүүнбат ба баг"
+date: 2026-05-07
+date-format: "YYYY оны M-р сарын D"
+
+project:
+  execute-dir: project
+  preview: false
+
+toc: true
+toc-depth: 3
+toc-title: Агуулга
+
+number-sections: true
+
+format:
+  pdf:
+    echo: true
+    pdf-engine: xelatex
+    papersize: a4paper
+
+    geometry:
+      - left=2cm
+      - right=2cm
+      - top=2cm
+      - bottom=3cm
+
+    include-in-header:
+      - text: |
+          \usepackage[english,mongolian]{babel}
+          \usepackage{fontspec}
+
+          \setmainfont{Times New Roman}
+            \setmonofont{Menlo}
+
+          \AddToHook{env/Highlighting/begin}{\footnotesize}
+
+          \usepackage{titling}
+          \pretitle{\begin{center}\LARGE\bfseries}
+          \posttitle{\par\end{center}\vskip 1em}
+
+          \usepackage{titlesec}
+
+          \titleformat{\section}
+            {\normalfont\Large\bfseries\selectfont}
+            {\thesection}
+            {1em}
+            {}
+
+          \titleformat{\subsection}
+            {\normalfont\large\bfseries\selectfont}
+            {\thesubsection}
+            {1em}
+            {}
+
+execute:
+  echo: false
+
+fig-align: center
+fig-height: 4
+fig-width: 6
+fig-format: pdf
+
+fig-cap-location: top
+tbl-cap-location: top
+---
+
+```{python}
+#| echo: false
+
+#| echo: false
+
+import sys
+import os
+
+sys.path.append(
+    os.path.abspath("..")
+)
+
+conclusion = list()
+```
+
+# Шаардлагатай багцууд {-}
+
+Энэхүү судалгаанд Python програмчлалын хэл ашигласан.
+
+Шаардлагатай багцууд:
+
+```bash
+pip install matplotlib
+```
+
+Импорт хийх:
+
+```{python}
+import matplotlib.pyplot as plt
+```
+
+# Өгөгдөл
+
+Энэхүү судалгаанд спам болон хэвийн и-мэйлүүдийн текст өгөгдлийг ашиглав.
+
+Өгөгдлийг хоёр ангилалд хуваасан.
+
+- spam : хүсээгүй и-мэйл
+- ham : хэвийн и-мэйл
+
+Өгөгдлийн бүтэц:
+
+```text
+data/
+├── train/
+│   ├── spam/
+│   └── ham/
+└── dev/
+    ├── spam/
+    └── ham/
+```
+
+Сургалтын өгөгдөл болон хөгжүүлэлтийн өгөгдлийг дараах байдлаар уншив.
+
+```{python}
+from src.dataset import read_dataset
+
+train_emails, train_labels = read_dataset(
+    "../data/train"
+)
+
+dev_emails, dev_labels = read_dataset(
+    "../data/dev"
+)
+
+print(
+    "Train:",
+    len(train_emails)
+)
+
+print(
+    "Dev:",
+    len(dev_emails)
+)
+```
+
+# Текст өгөгдлийн боловсруулалт
+
+Текст өгөгдлийг жижиг үсэгт хөрвүүлж, тэмдэгтүүдийг арилган үг болгон задлав.
+
+```{python}
+from src.tokenizer import tokenize
+
+sample_email = train_emails[0]
+
+tokens = tokenize(
+    sample_email
+)
+
+tokens[:20]
+```
+
+# Үгийн сан байгуулах
+
+Текст өгөгдлөөс бүх давтагдашгүй үгсийг ялган авч үгийн сан байгуулсан.
+
+```{python}
+from src.features import build_vocabulary
+
+vocab, word_to_index = \
+    build_vocabulary(
+        train_emails
+    )
+
+print(
+    "Үгийн сангийн хэмжээ:",
+    len(vocab)
+)
+```
+
+```{python}
+conclusion.append(
+    f"Сургалтын өгөгдлөөс {len(vocab)} ширхэг өвөрмөц үг илрүүлэв."
+)
+```
+
+# Bag-of-Words
+
+Текст өгөгдлийг машин сургалтын загварт ашиглахын тулд Bag-of-Words аргаар тоон вектор болгон хөрвүүлэв.
+
+```{python}
+from src.features import create_bow_matrix
+
+bow_matrix = create_bow_matrix(
+    train_emails,
+    word_to_index
+)
+
+print(
+    "И-мэйлүүдийн тоо:",
+    len(bow_matrix)
+)
+
+print(
+    "Нэг и-мэйлийн векторын урт:",
+    len(bow_matrix[0])
+)
+```
+
+# Наив Байесын загвар
+
+Спам ангилалд магадлалын үндсэн дээр ажилладаг Наив Байесын алгоритмыг ашиглав.
+
+$$
+P(C|X)=\frac{P(X|C)P(C)}{P(X)}
+$$
+
+энд:
+
+- $C$ нь ангилал
+- $X$ нь и-мэйлийн текст
+
+Загварыг сургах:
+
+```{python}
+from src.naive_bayes import NaiveBayes
+
+model = NaiveBayes(
+    alpha=1
+)
+
+model.fit(
+    train_emails,
+    train_labels
+)
+```
+
+# Загварын үнэлгээ
+
+Загварын үр дүнг хөгжүүлэлтийн өгөгдөл дээр үнэлэв.
+
+```{python}
+from src.metrics import (
+    accuracy_score,
+    confusion_matrix
+)
+
+predictions = model.predict(
+    dev_emails
+)
+
+accuracy = accuracy_score(
+    predictions,
+    dev_labels
+)
+
+tp, tn, fp, fn = \
+    confusion_matrix(
+        predictions,
+        dev_labels
+    )
+
+print(
+    "Accuracy:",
+    round(
+        accuracy*100,
+        2
+    ),
+    "%"
+)
+
+print(
+    "TP:",
+    tp
+)
+
+print(
+    "TN:",
+    tn
+)
+
+print(
+    "FP:",
+    fp
+)
+
+print(
+    "FN:",
+    fn
+)
+```
+
+# Confusion matrix
+
+```{python}
+#| fig-cap: Загварын ангилалтын үр дүн
+
+matrix = [
+    [tp, fp],
+    [fn, tn]
+]
+
+plt.figure(
+    figsize=(4,3)
+)
+
+plt.imshow(
+    matrix
+)
+
+plt.xticks(
+    [0,1],
+    ["Spam","Ham"]
+)
+
+plt.yticks(
+    [0,1],
+    ["Spam","Ham"]
+)
+
+plt.colorbar()
+
+plt.show()
+```
+
+# Нарийвчлалын үзүүлэлтүүд
+
+Precision:
+
+$$
+Precision=
+\frac{TP}{TP+FP}
+$$
+
+Recall:
+
+$$
+Recall=
+\frac{TP}{TP+FN}
+$$
+
+Тооцоолол:
+
+```{python}
+precision = tp / (tp + fp)
+
+recall = tp / (tp + fn)
+
+f1 = (
+    2 *
+    precision *
+    recall
+    /
+    (
+        precision +
+        recall
+    )
+)
+
+print(
+    "Precision:",
+    round(
+        precision*100,
+        2
+    ),
+    "%"
+)
+
+print(
+    "Recall:",
+    round(
+        recall*100,
+        2
+    ),
+    "%"
+)
+
+print(
+    "F1:",
+    round(
+        f1*100,
+        2
+    ),
+    "%"
+)
+```
+
+```{python}
+conclusion.append(
+    f"Наив Байесын загвар {accuracy*100:.2f} хувийн нарийвчлалтай ажиллав."
+)
+
+conclusion.append(
+    f"Precision {precision*100:.2f} хувь байв."
+)
+
+conclusion.append(
+    f"Recall {recall*100:.2f} хувь байв."
+)
+
+conclusion.append(
+    f"1000 и-мэйлээс {tp+tn} ширхгийг зөв ангилсан."
+)
+```
+
+# Үр дүн
+
+Судалгааны үр дүнд:
+
+- Accuracy = 97.20%
+- True Positive = 491
+- True Negative = 481
+- False Positive = 19
+- False Negative = 9
+
+гэж гарсан.
+
+Энэ нь боловсруулсан Наив Байесын загвар спам и-мэйл илрүүлэхэд өндөр үр ашигтай байгааг харуулж байна.
+
+# Дүгнэлт {.unnumbered}
+
+```{python}
+from IPython.display import (
+    display_latex,
+    Latex
+)
+
+latex_code = (
+    "\\begin{enumerate}\n"
+    +
+    "\n".join(
+        f"\\item {text}"
+        for text in conclusion
+    )
+    +
+    "\n\\end{enumerate}"
+)
+
+display_latex(
+    Latex(
+        latex_code
+    )
+)
+```
+
+# Багийн гишүүдийн оролцоо {.unnumbered}
+
+| Гишүүн | Үүрэг |
+|---|---|
+| Б.Билгүүн | Алгоритм хэрэгжүүлэлт, GitHub |
+| Гишүүн 2 | Өгөгдөл бэлтгэл |
+| Гишүүн 3 | Үнэлгээ |
+| Гишүүн 4 | Тайлан |
+| Гишүүн 5 | Танилцуулга |
+
+# Ашигласан материал {.unnumbered}
+
+1. Manning, C. D. Introduction to Information Retrieval.
+2. Python documentation.
+3. Course materials.
+4. Dataset documentation.
