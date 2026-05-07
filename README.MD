@@ -1,28 +1,181 @@
-# Spam Email Detection using Naive Bayes
+# Наив Байесын алгоритмаар спам и-мэйл илрүүлэх нь
 
-Machine learning project for detecting spam emails using a custom implementation of the Naive Bayes algorithm.
+Энэхүү төсөл нь **Naive Bayes алгоритм** ашиглан и-мэйлийг **спам** болон **хэвийн (ham)** гэсэн хоёр ангилалд автоматаар ангилах машин сургалтын төсөл юм.
 
-## Team Members
+Төслийн хүрээнд гаднын машин сургалтын сан ашиглалгүйгээр Python хэл дээр Наив Байесын ангилагчийг эхнээс нь хэрэгжүүлсэн.
 
-- Bilguun
-- Amin-Erdene
-- Zhargal
-- Bulganlham
+---
 
+## Багийн гишүүд
 
-## Project Structure
+* Б.Билгүүн — Алгоритмын хэрэгжүүлэлт, Тайлан
+* Амин-Эрдэнэ — Өгөгдөл бэлтгэл, цэвэрлэгээ
+* Жаргал — Загварын үнэлгээ, тест
+* Булганлхам — Github, quarto 
+Мөн энэхүү төсөлд бүх багийн гишүүд гар бие оролцсон болно.
 
-- data/ : dataset
-- src/ : source code
-- report/ : Quarto report
-- slides/ : presentation slides
+---
 
-## Run
+## Төслийн зорилго
 
-```bash
+Энэхүү төслийн зорилго:
+
+* Спам и-мэйлийг автоматаар илрүүлэх загвар боловсруулах
+* Наив Байесын алгоритмыг Python хэл дээр хэрэгжүүлэх
+* Текст өгөгдөл боловсруулах
+* Bag-of-Words ашиглан текстийг тоон өгөгдөлд хөрвүүлэх
+* Загварын үр дүнг үнэлэх
+
+---
+
+## Гол хэрэгжүүлэлтүүд
+
+Энэхүү төсөлд дараах үндсэн хэсгүүдийг хэрэгжүүлсэн:
+
+ Текст tokenization
+ Үгийн сан байгуулах
+ Bag-of-Words feature extraction
+ Laplace smoothing
+ Log probability ашигласан ангилалт
+ Accuracy тооцоолол
+ Precision, Recall, F1-score
+ Confusion matrix
+ **Quarto** ашигласан тайлан
+
+---
+
+## Төслийн бүтэц
+
+```text id="dwtg0l"
+ml-spam-filter/
+│
+├── data/
+│   ├── train/
+│   │   ├── spam/
+│   │   └── ham/
+│   │
+│   └── dev/
+│       ├── spam/
+│       └── ham/
+│
+├── src/
+│   ├── tokenizer.py
+│   ├── dataset.py
+│   ├── features.py
+│   ├── naive_bayes.py
+│   ├── metrics.py
+│   └── main.py
+│
+├── report/
+│   └── report.qmd
+│
+├── slides/
+│   └── presentation.qmd 
+├── README.md
+└── requirements.txt
+```
+
+---
+
+## Өгөгдөл
+
+Өгөгдөл нь и-мэйлийн текстүүдээс бүрдэх бөгөөд хоёр ангилалтай:
+
+* **spam** → хүсээгүй и-мэйл
+* **ham** → хэвийн и-мэйл
+
+Өгөгдлийг дараах байдлаар хуваасан:
+
+* **Train set** — сургалтын өгөгдөл
+* **Dev set** — шалгалтын өгөгдөл
+
+---
+
+## Суулгах заавар
+
+Репозитори татах:
+
+```bash id="prqfpa"
+git clone https://github.com/bilguunbatbaatar/ml-spam-filter.git
+cd ml-spam-filter
+```
+
+Virtual environment үүсгэх:
+
+```bash id="jvqarf"
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Шаардлагатай багцууд суулгах:
+
+```bash id="6l1a66"
+pip install -r requirements.txt
+```
+
+---
+
+## Ажиллуулах
+
+Загварыг сургаж, үр дүн харах:
+
+```bash id="scc79v"
 python3 src/main.py
 ```
 
-## Result
+Хүлээгдэх үр дүн:
 
+```text id="3k3ehl"
 Accuracy: 97.20%
+TP=491 TN=481 FP=19 FN=9
+```
+
+---
+
+## Загварын үр дүн
+
+| Үзүүлэлт  |   Утга |
+| --------- | -----: |
+| Accuracy  | 97.20% |
+| Precision | 96.27% |
+| Recall    | 98.20% |
+| F1-score  | 97.20% |
+
+---
+
+## Ашигласан аргачлал
+
+Загвар нь дараах Наив Байесын томъёонд суурилна:
+
+P(C|X) = P(X|C) × P(C) / P(X)
+
+Энд:
+
+* **C** → ангилал (spam эсвэл ham)
+* **X** → и-мэйлийн үгс
+
+Текст өгөгдлийг **Bag-of-Words** аргаар тоон өгөгдөл болгон хөрвүүлж ангилсан.
+
+---
+
+## Тайлан боловсруулах
+
+Төслийн тайланг **Quarto** ашиглан боловсруулсан.
+
+PDF тайлан үүсгэх:
+
+```bash id="e2d29f"
+quarto render report/report.qmd
+```
+
+---
+
+## Репозитори
+
+[GitHub Repository](https://github.com/bilguunbatbaatar/ml-spam-filter.git)
+
+---
+
+## Ашиглалтын нөхцөл
+
+Энэхүү төсөл нь сургалт, судалгааны зориулалтаар боловсруулагдсан.
