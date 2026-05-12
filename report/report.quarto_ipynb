@@ -1,0 +1,723 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "f159f74d",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "jupyter: spam-filter\n",
+    "title: \"Наив Байесын алгоритмаар спам и-мэйл илрүүлэх нь\"\n",
+    "subtitle: \"\"\n",
+    "abstract: Энэхүү ажлаар спам болон хэвийн и-мэйлүүдийг машин сургалтын Наив Байесын алгоритмын тусламжтай ангилах загвар боловсруулав. Текст өгөгдлийг Bag-of-Words аргаар тоон хэлбэрт хөрвүүлж, Лапласын smoothing ашиглан магадлалын загвар сургаж, улмаар хөгжүүлэлтийн өгөгдөл дээр үр дүнг үнэлэв. Судалгааны үр дүнд боловсруулсан загвар 97.20 хувийн нарийвчлалтай ажилласан.\n",
+    "author: \"Б.Билгүүн\"\n",
+    "date: 2026-05-07\n",
+    "date-format: \"YYYY оны M-р сарын D\"\n",
+    "\n",
+    "project:\n",
+    "  execute-dir: project\n",
+    "  preview: false\n",
+    "\n",
+    "toc: true\n",
+    "toc-depth: 3\n",
+    "toc-title: Агуулга\n",
+    "\n",
+    "number-sections: true\n",
+    "format:\n",
+    "  pdf:\n",
+    "    pdf-engine: xelatex\n",
+    "    papersize: a4paper\n",
+    "    echo: true\n",
+    "\n",
+    "    geometry:\n",
+    "      - left=2cm\n",
+    "      - right=2cm\n",
+    "      - top=2cm\n",
+    "      - bottom=3cm\n",
+    "\n",
+    "    include-in-header:\n",
+    "      - text: |\n",
+    "          \\usepackage{fontspec}\n",
+    "\n",
+    "          \\setmainfont{Times New Roman}\n",
+    "          \\setmonofont{Menlo}\n",
+    "          \\usepackage{tocloft}\n",
+    "\n",
+    "          \\renewcommand{\\cftsecfont}{\\fontspec{Times New Roman}}\n",
+    "          \\renewcommand{\\cftsubsecfont}{\\fontspec{Times New Roman}}\n",
+    "\n",
+    "          \\renewcommand{\\cftsecpagefont}{\\fontspec{Times New Roman}}\n",
+    "          \\renewcommand{\\cftsubsecpagefont}{\\fontspec{Times New Roman}}\n",
+    "\n",
+    "          \\usepackage[\n",
+    "            unicode=true,\n",
+    "            bookmarks=true,\n",
+    "            bookmarksopen=true,\n",
+    "            pdfencoding=auto\n",
+    "          ]{hyperref}\n",
+    "\n",
+    "execute:\n",
+    "  echo: false\n",
+    "\n",
+    "fig-align: center\n",
+    "fig-height: 4\n",
+    "fig-width: 6\n",
+    "fig-format: pdf\n",
+    "\n",
+    "fig-cap-location: top\n",
+    "tbl-cap-location: top\n",
+    "---"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "2dbbc1d3",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#| echo: false\n",
+    "\n",
+    "#| echo: false\n",
+    "\n",
+    "import sys\n",
+    "import os\n",
+    "\n",
+    "sys.path.append(\n",
+    "    os.path.abspath(\"..\")\n",
+    ")\n",
+    "\n",
+    "conclusion = list()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "08a4d60c",
+   "metadata": {},
+   "source": [
+    "# Шаардлагатай багцууд \n",
+    "Энэхүү судалгаанд Python програмчлалын хэл ашигласан.\n",
+    "\n",
+    "Шаардлагатай багцууд:\n",
+    "\n",
+    "```bash\n",
+    "pip install matplotlib\n",
+    "```\n",
+    "\n",
+    "Импорт хийх:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "6d9bbc74",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import matplotlib.pyplot as plt"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5993cbbf",
+   "metadata": {},
+   "source": [
+    "# Өгөгдөл\n",
+    "\n",
+    "Энэхүү судалгаанд спам болон хэвийн и-мэйлүүдийн текст өгөгдлийг ашиглав.\n",
+    "\n",
+    "Өгөгдлийг хоёр ангилалд хуваасан.\n",
+    "\n",
+    "- spam : хүсээгүй и-мэйл\n",
+    "- ham : хэвийн и-мэйл\n",
+    "\n",
+    "Өгөгдлийн бүтэц:\n",
+    "\n",
+    "```text\n",
+    "data/\n",
+    "├── train/\n",
+    "│   ├── spam/\n",
+    "│   └── ham/\n",
+    "└── dev/\n",
+    "    ├── spam/\n",
+    "    └── ham/\n",
+    "```\n",
+    "\n",
+    "Сургалтын өгөгдөл болон хөгжүүлэлтийн өгөгдлийг дараах байдлаар уншив."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "3dc81fb3",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Train: 2000\n",
+      "Dev: 1000\n"
+     ]
+    }
+   ],
+   "source": [
+    "from src.dataset import read_dataset\n",
+    "\n",
+    "train_emails, train_labels = read_dataset(\n",
+    "    \"../data/train\"\n",
+    ")\n",
+    "\n",
+    "dev_emails, dev_labels = read_dataset(\n",
+    "    \"../data/dev\"\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"Train:\",\n",
+    "    len(train_emails)\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"Dev:\",\n",
+    "    len(dev_emails)\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "61821321",
+   "metadata": {},
+   "source": [
+    "# Текст өгөгдлийн боловсруулалт\n",
+    "\n",
+    "Текст өгөгдлийг жижиг үсэгт хөрвүүлж, тэмдэгтүүдийг арилган үг болгон задлав."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "c042980d",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['subject',\n",
+       " 'what',\n",
+       " 'up',\n",
+       " 'your',\n",
+       " 'cam',\n",
+       " 'babe',\n",
+       " 'what',\n",
+       " 'are',\n",
+       " 'you',\n",
+       " 'looking',\n",
+       " 'for',\n",
+       " 'if',\n",
+       " 'your',\n",
+       " 'looking',\n",
+       " 'for',\n",
+       " 'a',\n",
+       " 'companion',\n",
+       " 'for',\n",
+       " 'friendship',\n",
+       " 'love']"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "from src.tokenizer import tokenize\n",
+    "\n",
+    "sample_email = train_emails[0]\n",
+    "\n",
+    "tokens = tokenize(\n",
+    "    sample_email\n",
+    ")\n",
+    "\n",
+    "tokens[:20]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5c9f3e9a",
+   "metadata": {},
+   "source": [
+    "# Үгийн сан байгуулах\n",
+    "\n",
+    "Текст өгөгдлөөс бүх давтагдашгүй үгсийг ялган авч үгийн сан байгуулсан."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "5b64646d",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Үгийн сангийн хэмжээ: 27865\n"
+     ]
+    }
+   ],
+   "source": [
+    "from src.features import build_vocabulary\n",
+    "\n",
+    "vocab, word_to_index = \\\n",
+    "    build_vocabulary(\n",
+    "        train_emails\n",
+    "    )\n",
+    "\n",
+    "print(\n",
+    "    \"Үгийн сангийн хэмжээ:\",\n",
+    "    len(vocab)\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "b19c9781",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "conclusion.append(\n",
+    "    f\"Сургалтын өгөгдлөөс {len(vocab)} ширхэг өвөрмөц үг илрүүлэв.\"\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "511784d3",
+   "metadata": {},
+   "source": [
+    "# Bag-of-Words\n",
+    "\n",
+    "Текст өгөгдлийг машин сургалтын загварт ашиглахын тулд Bag-of-Words аргаар тоон вектор болгон хөрвүүлэв."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "d7fee253",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "И-мэйлүүдийн тоо: 2000\n",
+      "Нэг и-мэйлийн векторын урт: 27865\n"
+     ]
+    }
+   ],
+   "source": [
+    "from src.features import create_bow_matrix\n",
+    "\n",
+    "bow_matrix = create_bow_matrix(\n",
+    "    train_emails,\n",
+    "    word_to_index\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"И-мэйлүүдийн тоо:\",\n",
+    "    len(bow_matrix)\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"Нэг и-мэйлийн векторын урт:\",\n",
+    "    len(bow_matrix[0])\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5d7e0584",
+   "metadata": {},
+   "source": [
+    "# Наив Байесын загвар\n",
+    "\n",
+    "Спам ангилалд магадлалын үндсэн дээр ажилладаг Наив Байесын алгоритмыг ашиглав.\n",
+    "\n",
+    "$$\n",
+    "P(C|X)=\\frac{P(X|C)P(C)}{P(X)}\n",
+    "$$\n",
+    "\n",
+    "энд:\n",
+    "\n",
+    "- $C$ нь ангилал\n",
+    "- $X$ нь и-мэйлийн текст\n",
+    "\n",
+    "Загварыг сургах:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "1495ef2e",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from src.naive_bayes import NaiveBayes\n",
+    "\n",
+    "model = NaiveBayes(\n",
+    "    alpha=1\n",
+    ")\n",
+    "\n",
+    "model.fit(\n",
+    "    train_emails,\n",
+    "    train_labels\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "727e302f",
+   "metadata": {},
+   "source": [
+    "# Загварын үнэлгээ\n",
+    "\n",
+    "Загварын үр дүнг хөгжүүлэлтийн өгөгдөл дээр үнэлэв."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "64b081ff",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Accuracy: 97.2 %\n",
+      "TP: 491\n",
+      "TN: 481\n",
+      "FP: 19\n",
+      "FN: 9\n"
+     ]
+    }
+   ],
+   "source": [
+    "from src.metrics import (\n",
+    "    accuracy_score,\n",
+    "    confusion_matrix\n",
+    ")\n",
+    "\n",
+    "predictions = model.predict(\n",
+    "    dev_emails\n",
+    ")\n",
+    "\n",
+    "accuracy = accuracy_score(\n",
+    "    predictions,\n",
+    "    dev_labels\n",
+    ")\n",
+    "\n",
+    "tp, tn, fp, fn = \\\n",
+    "    confusion_matrix(\n",
+    "        predictions,\n",
+    "        dev_labels\n",
+    "    )\n",
+    "\n",
+    "print(\n",
+    "    \"Accuracy:\",\n",
+    "    round(\n",
+    "        accuracy*100,\n",
+    "        2\n",
+    "    ),\n",
+    "    \"%\"\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"TP:\",\n",
+    "    tp\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"TN:\",\n",
+    "    tn\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"FP:\",\n",
+    "    fp\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"FN:\",\n",
+    "    fn\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "82de4a56",
+   "metadata": {},
+   "source": [
+    "# Confusion matrix"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "d3681b7f",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "application/pdf": "JVBERi0xLjQKJazcIKu6CjEgMCBvYmoKPDwgL1R5cGUgL0NhdGFsb2cgL1BhZ2VzIDIgMCBSID4+CmVuZG9iago4IDAgb2JqCjw8IC9Gb250IDMgMCBSIC9YT2JqZWN0IDcgMCBSIC9FeHRHU3RhdGUgNCAwIFIgL1BhdHRlcm4gNSAwIFIKL1NoYWRpbmcgNiAwIFIgL1Byb2NTZXQgWyAvUERGIC9UZXh0IC9JbWFnZUIgL0ltYWdlQyAvSW1hZ2VJIF0gPj4KZW5kb2JqCjExIDAgb2JqCjw8IC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL1Jlc291cmNlcyA4IDAgUgovTWVkaWFCb3ggWyAwIDAgMjYxLjgzNjYyNSAxOTcuMzkxODc1IF0gL0NvbnRlbnRzIDkgMCBSIC9Bbm5vdHMgMTAgMCBSID4+CmVuZG9iago5IDAgb2JqCjw8IC9MZW5ndGggMTIgMCBSIC9GaWx0ZXIgL0ZsYXRlRGVjb2RlID4+CnN0cmVhbQp4nJVUTZMSMRC951f0UQ/2pPPZOS6uotwQqjxYHixk0a1Fxa2Sv29nYD4ZUmxRYcgjef06eW+q++2/n5vtp/kM3q5U1c02z4rgUcYONDzKOALBXMZOaXijYa9MIGQbgvF5/tSfU4poE3H0guvh9IdSD6q6E6JnYZ0r5QzGvMlY5FgvEm6dUPMAfOpAShqp4Wu2D8C6yAEuqSkEtKZ5/N3CZ/gF1Z3JaqRfGcesCoYncWg2aPnknz5McG/2UH0kuP8NS7WEQ0Or5QgztUY+kwui2KF1o65bTKNtmlYzuYOjOsh3fe4EUaMOJMsSmsj5x2avZmtVvScgDesHlVWuv6sv8Gr159v+NXyF9UK9W6ulqjUoChG9HhXvwGJ18h5Zn/6/QcCHqfrtlTnGQOf6VthG4GT3KLfnHDK9vO+mbvDo/Khsh012bZozEZMH/4KODSxOAapvf2irKedP2lmtphKxv5IIWX1zpnprexwF5ja5Czi9G06Wzu8FZcQ6ZmxqYxi951GUG3BA3+6/zPINEWWk0AZUsprZ8mOYT3PKZy+bTS53nSrxuInG25T1W4N6CE45xFh/3kvoog/BJq1dwSek9aVDWwWcMEaOwfYVdGBRAXtMTMwxhcAFBaaogIxDwy5x7EvooUUNJIfvmEmeVi7hughbFuEZYyJDNBDRoWUR3mFKztqgUwoFEW4oopTZayZ3KCRXTH6L88/7b8jDhIA6JCtR/h+tY5h/CmVuZHN0cmVhbQplbmRvYmoKMTIgMCBvYmoKNTUzCmVuZG9iagoxMCAwIG9iagpbIF0KZW5kb2JqCjE5IDAgb2JqCjw8IC9MZW5ndGggNzkgL0ZpbHRlciAvRmxhdGVEZWNvZGUgPj4Kc3RyZWFtCnicMzc1UjBQsLQAEmamJgrmRpYKKYZcQD6IlctlaGkOZuWAWSbGBkCWqakpEgsiC9MLYcHkYLSxiTnUBAQLJAe2NgdmWw5XBlcaANaUHAwKZW5kc3RyZWFtCmVuZG9iagoyMCAwIG9iago8PCAvTGVuZ3RoIDM0MSAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJw1UjvSm0EI679T6AKeWd7LeZzJpPhz/zYCOxUssEIC0gIHmXiJIapRrvglTzBeJ/B3vTyNn8e7kFrwVKQfuDZt4/1YsyYKlkYshdnHvh8l5Hhq/BsCPRdpwoxMRg4kA3G/1ufPepMph9+ANG1OHyVJD6IFu1vDji8LMkh6UsOSnfywrgVWF6EJc2NNJCOnVqbm+dgzXMYTYySomgUk6RP3qYIRacZj56wlDzIcT/Xixa+38VrmMfWyqkDGNsEcbCcz4RRFBOIXlCQ3cRdNHcXRzFhzu9BQUuS+u4eTk173l5OowCshnMVawjFDT1nmZKdBCVStnAAzrNe+ME7TRgl3arq9K/b188wkjNscdlZKpsE5Du5lkzmCZK87JmzC4xDz3j2CkZg3v4stgiuXOddk+rEfRRvpg+L6nKspsxUl/EOVPLHiGv+f3/v58/z+B4wofiMKZW5kc3RyZWFtCmVuZG9iagoyMSAwIG9iago8PCAvTGVuZ3RoIDMwNyAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJw9kktuAzEMQ/c+hS4QwPrZnvOkKLqY3n/bJyXpihzZFkVqlrpMWVMekDSThH/p8HCxnfI7bM9mZuBaopeJ5ZTn0BVi7qJ82cxGXVknxeqEZjq36FE5Fwc2Taqfqyyl3S54Dtcmnlv2ET+80KAe1DUuCTd0V6NlKTRjqvt/0nv8jDLgakxdbFKrex88XkRV6OgHR4kiY5cX5+NBCelKwmhaiJV3RQNB7vK0ynsJ7tveasiyB6mYzjspZrDrdFIubheHIR7I8qjw5aPYa0LP+LArJfRI2IYzcifuaMbm1MjikP7ejQRLj65oIfPgr27WLmC8UzpFYmROcqxpi1VO91AU07nDvQwQ9WxFQylzkdXqX8POC2uWbBZ4SvoFHqPdJksOVtnbqE7vrTzZ0PcfWtd0HwplbmRzdHJlYW0KZW5kb2JqCjIyIDAgb2JqCjw8IC9MZW5ndGggOTQgL0ZpbHRlciAvRmxhdGVEZWNvZGUgPj4Kc3RyZWFtCnicRY3BEcAgCAT/VEEJCgraTyaTh/b/jRAyfGDnDu6EBQu2eUYfBZUmXhVYB0pj3FCPQL3hci3J3AUPcCd/2tBUnJbTd2mRSVUp3KQSef8OZyaQqHnRY533C2P7IzwKZW5kc3RyZWFtCmVuZG9iagoyMyAwIG9iago8PCAvTGVuZ3RoIDI1OCAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJxFkUtyBCAIRPeegiOA/OQ8k0plMbn/Ng3OZDZ2l6j9hEojphIs5xR5MH3J8s1ktul3OVY7GwUURSiYyVXosQKrO1PEmWuJautjZeS40zsGxRvOXTmpZHGjjHVUdSpwTM+V9VHd+XZZlH1HDmUK2KxzHGzgym3DGCdGm63uDveJIE8nU0fF7SDZ8AcnjX2VqytwnWz20UswDgT9QhOY5ItA6wyBxs1T9OQS7OPjdueBYG95EUjZEMiRIRgdgnadXP/i1vm9/3GGO8+1Ga4c7+J3mNZ2x19ikhVzAYvcKajnay5a1xk63pMzx+Sm+4bOuWCXu4NM7/k/1s/6/gMeKWb6CmVuZHN0cmVhbQplbmRvYmoKMjQgMCBvYmoKPDwgL0xlbmd0aCA4MyAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJxFjLsNwDAIRHumYAR+JvY+UZTC3r8NECVuuCfdPVwdCZkpbjPDQwaeDCyGXXGB9JYwC1xHUI6d7KNh1b7qBI31plLz7w+Unuys4obrAQJCGmYKZW5kc3RyZWFtCmVuZG9iagoyNSAwIG9iago8PCAvTGVuZ3RoIDIzOSAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJxNUMltBDEM+7sKNTDA6By7HgeLPLL9f0PKCZKXaEviofKUW5bKZfcjOW/JuuVDh06VafJu0M2vsf6jDAJ2/1BUEK0lsUrMXNJusTRJL9nDOI2Xa7WO56l7hFmjePDj2NMpgek9MsFms705MKs9zg6QTrjGr+rTO5UkA4m6kPNCpQrrHtQloo8r25hSnU4t5RiXn+h7fI4APcXejdzRx8sXjEa1LajRapU4DzATU9GVcauRgZQTBkNnR1c0C6XIynpCNcKNOaGZvcNwYAPLs4Skpa1SvA9lAegCXdo64zRKgo4Awt8ojPX6Bqr8XjcKZW5kc3RyZWFtCmVuZG9iagoyNiAwIG9iago8PCAvTGVuZ3RoIDM0MCAvRmlsdGVyIC9GbGF0ZURlY29kZSA+PgpzdHJlYW0KeJw1UjluBDEM6/0KfSCAbtvv2SBIkfy/DanZFANxdFKUO1pUdsuHhVS17HT5tJXaEjfkd2WFxAnJqxLtUoZIqLxWIdXvmTKvtzVnBMhSpcLkpORxyYI/w6WnC8f5trGv5cgdjx5YFSOhRMAyxcToGpbO7rBmW36WacCPeIScK9Ytx1gFUhvdOO2K96F5LbIGiL2ZlooKHVaJFn5B8aBHjX32GFRYINHtHElwjIlQkYB2gdpIDDl7LHZRH/QzKDET6NobRdxBgSWSmDnFunT03/jQsaD+2Iw3vzoq6VtaWWPSPhvtlMYsMul6WPR089bHgws076L859UMEjRljZLGB63aOYaimVFWeLdDkw3NMcch8w6ewxkJSvo8FL+PJRMdlMjfDg2hf18eo4ycNt4C5qI/bRUHDuKzw165gRVKF2uS9wGpTOiB6f+v8bW+19cfHe2AxgplbmRzdHJlYW0KZW5kb2JqCjI3IDAgb2JqCjw8IC9MZW5ndGggMjUxIC9GaWx0ZXIgL0ZsYXRlRGVjb2RlID4+CnN0cmVhbQp4nC1RSXIDQQi7zyv0hGan32OXK4fk/9cIygcGDYtAdFrioIyfICxXvOWRq2jD3zMxgt8Fh34r121Y5EBUIEljUDWhdvF69B7YcZgJzJPWsAxmrA/8jCnc6MXhMRlnt9dl1BDsXa89mUHJrFzEJRMXTNVhI2cOP5kyLrRzPTcg50ZYl2GQblYaMxKONIVIIYWqm6TOBEESjK5GjTZyFPulL490hlWNqDHscy1tX89NOGvQ7Fis8uSUHl1xLicXL6wc9PU2AxdRaazyQEjA/W4P9XOyk994S+fOFtPje83J8sJUYMWb125ANtXi37yI4/uMr+fn+fwDX2BbiAplbmRzdHJlYW0KZW5kb2JqCjI4IDAgb2JqCjw8IC9MZW5ndGggMjE1IC9GaWx0ZXIgL0ZsYXRlRGVjb2RlID4+CnN0cmVhbQp4nDVROQ4DIQzs9xX+QCSML3hPoijN/r/NjNFWHsFchrSUIZnyUpOoIeVTPnqZLpy63NfMajTnlrQtc4C4trwvrZLAiWaIg8FpmLgBmjwBQ9fRqFFDFx7Q1KVTKLDcBD6Kt24P3WO1gZe2IeeJIGIoGSxBzalFExZtzyekNb9eixvel+3dyFOlxpYYgQYBVjgc1+jX8JU9TybRdBUy1Ks1yxgJE0UiPPmOptUT61o00jIS1MYRrGoDvDv9ME4AABNxywJkn0qUs+TEb7H0swZX+v4Bn0dUlgplbmRzdHJlYW0KZW5kb2JqCjE3IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9CYXNlRm9udCAvQk1RUURWK0RlamFWdVNhbnMgL0ZpcnN0Q2hhciAwIC9MYXN0Q2hhciAyNTUKL0ZvbnREZXNjcmlwdG9yIDE2IDAgUiAvU3VidHlwZSAvVHlwZTMgL05hbWUgL0JNUVFEVitEZWphVnVTYW5zCi9Gb250QkJveCBbIC0xMDIxIC00NjMgMTc5NCAxMjMzIF0gL0ZvbnRNYXRyaXggWyAwLjAwMSAwIDAgMC4wMDEgMCAwIF0KL0NoYXJQcm9jcyAxOCAwIFIKL0VuY29kaW5nIDw8IC9UeXBlIC9FbmNvZGluZwovRGlmZmVyZW5jZXMgWyA0OCAvemVybyAvb25lIC90d28gL3RocmVlIC9mb3VyIDcyIC9IIDgzIC9TIDk3IC9hIDEwOSAvbSAxMTIgL3AgXQo+PgovV2lkdGhzIDE1IDAgUiA+PgplbmRvYmoKMTYgMCBvYmoKPDwgL1R5cGUgL0ZvbnREZXNjcmlwdG9yIC9Gb250TmFtZSAvQk1RUURWK0RlamFWdVNhbnMgL0ZsYWdzIDMyCi9Gb250QkJveCBbIC0xMDIxIC00NjMgMTc5NCAxMjMzIF0gL0FzY2VudCA5MjkgL0Rlc2NlbnQgLTIzNiAvQ2FwSGVpZ2h0IDAKL1hIZWlnaHQgMCAvSXRhbGljQW5nbGUgMCAvU3RlbVYgMCAvTWF4V2lkdGggMTM0MiA+PgplbmRvYmoKMTUgMCBvYmoKWyA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMAo2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDYwMCA2MDAgNjAwIDMxOCA0MDEgNDYwIDgzOCA2MzYKOTUwIDc4MCAyNzUgMzkwIDM5MCA1MDAgODM4IDMxOCAzNjEgMzE4IDMzNyA2MzYgNjM2IDYzNiA2MzYgNjM2IDYzNiA2MzYgNjM2CjYzNiA2MzYgMzM3IDMzNyA4MzggODM4IDgzOCA1MzEgMTAwMCA2ODQgNjg2IDY5OCA3NzAgNjMyIDU3NSA3NzUgNzUyIDI5NQoyOTUgNjU2IDU1NyA4NjMgNzQ4IDc4NyA2MDMgNzg3IDY5NSA2MzUgNjExIDczMiA2ODQgOTg5IDY4NSA2MTEgNjg1IDM5MCAzMzcKMzkwIDgzOCA1MDAgNTAwIDYxMyA2MzUgNTUwIDYzNSA2MTUgMzUyIDYzNSA2MzQgMjc4IDI3OCA1NzkgMjc4IDk3NCA2MzQgNjEyCjYzNSA2MzUgNDExIDUyMSAzOTIgNjM0IDU5MiA4MTggNTkyIDU5MiA1MjUgNjM2IDMzNyA2MzYgODM4IDYwMCA2MzYgNjAwIDMxOAozNTIgNTE4IDEwMDAgNTAwIDUwMCA1MDAgMTM0MiA2MzUgNDAwIDEwNzAgNjAwIDY4NSA2MDAgNjAwIDMxOCAzMTggNTE4IDUxOAo1OTAgNTAwIDEwMDAgNTAwIDEwMDAgNTIxIDQwMCAxMDIzIDYwMCA1MjUgNjExIDMxOCA0MDEgNjM2IDYzNiA2MzYgNjM2IDMzNwo1MDAgNTAwIDEwMDAgNDcxIDYxMiA4MzggMzYxIDEwMDAgNTAwIDUwMCA4MzggNDAxIDQwMSA1MDAgNjM2IDYzNiAzMTggNTAwCjQwMSA0NzEgNjEyIDk2OSA5NjkgOTY5IDUzMSA2ODQgNjg0IDY4NCA2ODQgNjg0IDY4NCA5NzQgNjk4IDYzMiA2MzIgNjMyIDYzMgoyOTUgMjk1IDI5NSAyOTUgNzc1IDc0OCA3ODcgNzg3IDc4NyA3ODcgNzg3IDgzOCA3ODcgNzMyIDczMiA3MzIgNzMyIDYxMSA2MDUKNjMwIDYxMyA2MTMgNjEzIDYxMyA2MTMgNjEzIDk4MiA1NTAgNjE1IDYxNSA2MTUgNjE1IDI3OCAyNzggMjc4IDI3OCA2MTIgNjM0CjYxMiA2MTIgNjEyIDYxMiA2MTIgODM4IDYxMiA2MzQgNjM0IDYzNCA2MzQgNTkyIDYzNSA1OTIgXQplbmRvYmoKMTggMCBvYmoKPDwgL0ggMTkgMCBSIC9TIDIwIDAgUiAvYSAyMSAwIFIgL2ZvdXIgMjIgMCBSIC9tIDIzIDAgUiAvb25lIDI0IDAgUgovcCAyNSAwIFIgL3RocmVlIDI2IDAgUiAvdHdvIDI3IDAgUiAvemVybyAyOCAwIFIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL0YxIDE3IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvQTEgPDwgL1R5cGUgL0V4dEdTdGF0ZSAvQ0EgMCAvY2EgMSA+PgovQTIgPDwgL1R5cGUgL0V4dEdTdGF0ZSAvQ0EgMSAvY2EgMSA+PiA+PgplbmRvYmoKNSAwIG9iago8PCA+PgplbmRvYmoKNiAwIG9iago8PCA+PgplbmRvYmoKNyAwIG9iago8PCAvSTEgMTMgMCBSIC9JMiAxNCAwIFIgPj4KZW5kb2JqCjEzIDAgb2JqCjw8IC9UeXBlIC9YT2JqZWN0IC9TdWJ0eXBlIC9JbWFnZSAvV2lkdGggNjkzIC9IZWlnaHQgNjk0Ci9Db2xvclNwYWNlIFsgL0luZGV4ZWQgL0RldmljZVJHQiAzICj95yTx5RxEAVRFCFspIF0gL0JpdHNQZXJDb21wb25lbnQgMgovRmlsdGVyIC9GbGF0ZURlY29kZQovRGVjb2RlUGFybXMgPDwgL1ByZWRpY3RvciAxMCAvQ29sb3JzIDEgL0NvbHVtbnMgNjkzIC9CaXRzUGVyQ29tcG9uZW50IDIgPj4KL0xlbmd0aCAyOSAwIFIgPj4Kc3RyZWFtCnic7dAxDYAAFMTQUgP4t8CEBfSwsLOggeGHNOEJuDS3MGK9RmYPSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSZEUSVm2kdl7H5k9Y+9KiqRIiqRIiqRIiqRIiqRIiqRIiqRIiqRIiqRIiqRIiqRIiqRIyp87SVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVIkRVL8OuCdP3eSpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiKpEiK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srmiU+ZWBGUzRae8q+iUTRVB+UfRKfcqOuVtRadsrAjKW4pO2UjRKWcogrK/olPeUHTK64qgbKDolHkUnTK0olNeVQRlMEWn/KvolHUVQXlA0SnrKDrlJUWnjKAIytqKTjlY0SlrKYLygqJTplN0yvOKoEyg6JQ1FJ0yqKJTHlUEZWJFpzys6JQDFEE5UNEp/yk65WlFp6yqCMqMik6ZT9EpqyiCsoCiU5ZSdMrKiqA8qeiUmxWdcouiU/ZTBGUWRac8oeiUsRVBWUTRKbMqOmV0RacMqwjK74pOuVjRKZcognKdolPuU3TKoYpOOVsRlCkUnXKBolOOUQTlF0WnjKbolAkVQZlM0SmnKTrlL0WnHKEIyp2KTplW0Sl/KIIykqJThlClcpDqlP8BZfjEkgplbmRzdHJlYW0KZW5kb2JqCjMwIDAgb2JqCjk1MwplbmRvYmoKMiAwIG9iago8PCAvVHlwZSAvUGFnZXMgL0tpZHMgWyAxMSAwIFIgXSAvQ291bnQgMSA+PgplbmRvYmoKMzEgMCBvYmoKPDwgL0NyZWF0b3IgKE1hdHBsb3RsaWIgdjMuMTAuOSwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZykKL1Byb2R1Y2VyIChNYXRwbG90bGliIHBkZiBiYWNrZW5kIHYzLjEwLjkpCi9DcmVhdGlvbkRhdGUgKEQ6MjAyNjA1MTIyMDQxMDErMDgnMDAnKSA+PgplbmRvYmoKeHJlZgowIDMyCjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNiAwMDAwMCBuIAowMDAwMDA5MzQyIDAwMDAwIG4gCjAwMDAwMDU3MTMgMDAwMDAgbiAKMDAwMDAwNTc0NSAwMDAwMCBuIAowMDAwMDA1ODQ0IDAwMDAwIG4gCjAwMDAwMDU4NjUgMDAwMDAgbiAKMDAwMDAwNTg4NiAwMDAwMCBuIAowMDAwMDAwMDY1IDAwMDAwIG4gCjAwMDAwMDAzNDQgMDAwMDAgbiAKMDAwMDAwMDk5MiAwMDAwMCBuIAowMDAwMDAwMjA4IDAwMDAwIG4gCjAwMDAwMDA5NzIgMDAwMDAgbiAKMDAwMDAwNTkyOSAwMDAwMCBuIAowMDAwMDA3MzIzIDAwMDAwIG4gCjAwMDAwMDQ1MjQgMDAwMDAgbiAKMDAwMDAwNDMxNyAwMDAwMCBuIAowMDAwMDAzOTQ2IDAwMDAwIG4gCjAwMDAwMDU1NzcgMDAwMDAgbiAKMDAwMDAwMTAxMiAwMDAwMCBuIAowMDAwMDAxMTYzIDAwMDAwIG4gCjAwMDAwMDE1NzcgMDAwMDAgbiAKMDAwMDAwMTk1NyAwMDAwMCBuIAowMDAwMDAyMTIzIDAwMDAwIG4gCjAwMDAwMDI0NTQgMDAwMDAgbiAKMDAwMDAwMjYwOSAwMDAwMCBuIAowMDAwMDAyOTIxIDAwMDAwIG4gCjAwMDAwMDMzMzQgMDAwMDAgbiAKMDAwMDAwMzY1OCAwMDAwMCBuIAowMDAwMDA3MzAyIDAwMDAwIG4gCjAwMDAwMDkzMjIgMDAwMDAgbiAKMDAwMDAwOTQwMiAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDMyIC9Sb290IDEgMCBSIC9JbmZvIDMxIDAgUiA+PgpzdGFydHhyZWYKOTU2MQolJUVPRgo=",
+      "text/plain": [
+       "<Figure size 1200x900 with 2 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#| fig-cap: Загварын ангилалтын үр дүн\n",
+    "\n",
+    "matrix = [\n",
+    "    [tp, fp],\n",
+    "    [fn, tn]\n",
+    "]\n",
+    "\n",
+    "plt.figure(\n",
+    "    figsize=(4,3)\n",
+    ")\n",
+    "\n",
+    "plt.imshow(\n",
+    "    matrix\n",
+    ")\n",
+    "\n",
+    "plt.xticks(\n",
+    "    [0,1],\n",
+    "    [\"Spam\",\"Ham\"]\n",
+    ")\n",
+    "\n",
+    "plt.yticks(\n",
+    "    [0,1],\n",
+    "    [\"Spam\",\"Ham\"]\n",
+    ")\n",
+    "\n",
+    "plt.colorbar()\n",
+    "\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "56504a54",
+   "metadata": {},
+   "source": [
+    "# Нарийвчлалын үзүүлэлтүүд\n",
+    "\n",
+    "Precision:\n",
+    "\n",
+    "$$\n",
+    "Precision=\n",
+    "\\frac{TP}{TP+FP}\n",
+    "$$\n",
+    "\n",
+    "Recall:\n",
+    "\n",
+    "$$\n",
+    "Recall=\n",
+    "\\frac{TP}{TP+FN}\n",
+    "$$\n",
+    "\n",
+    "Тооцоолол:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "c9c8e019",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Precision: 96.27 %\n",
+      "Recall: 98.2 %\n",
+      "F1: 97.23 %\n"
+     ]
+    }
+   ],
+   "source": [
+    "precision = tp / (tp + fp)\n",
+    "\n",
+    "recall = tp / (tp + fn)\n",
+    "\n",
+    "f1 = (\n",
+    "    2 *\n",
+    "    precision *\n",
+    "    recall\n",
+    "    /\n",
+    "    (\n",
+    "        precision +\n",
+    "        recall\n",
+    "    )\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"Precision:\",\n",
+    "    round(\n",
+    "        precision*100,\n",
+    "        2\n",
+    "    ),\n",
+    "    \"%\"\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"Recall:\",\n",
+    "    round(\n",
+    "        recall*100,\n",
+    "        2\n",
+    "    ),\n",
+    "    \"%\"\n",
+    ")\n",
+    "\n",
+    "print(\n",
+    "    \"F1:\",\n",
+    "    round(\n",
+    "        f1*100,\n",
+    "        2\n",
+    "    ),\n",
+    "    \"%\"\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "86410cf8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "conclusion.append(\n",
+    "    f\"Наив Байесын загвар {accuracy*100:.2f} хувийн нарийвчлалтай ажиллав.\"\n",
+    ")\n",
+    "\n",
+    "conclusion.append(\n",
+    "    f\"Precision {precision*100:.2f} хувь байв.\"\n",
+    ")\n",
+    "\n",
+    "conclusion.append(\n",
+    "    f\"Recall {recall*100:.2f} хувь байв.\"\n",
+    ")\n",
+    "\n",
+    "conclusion.append(\n",
+    "    f\"1000 и-мэйлээс {tp+tn} ширхгийг зөв ангилсан.\"\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8729233b",
+   "metadata": {},
+   "source": [
+    "# Үр дүн\n",
+    "\n",
+    "Судалгааны үр дүнд:\n",
+    "\n",
+    "- Accuracy = 97.20%\n",
+    "- True Positive = 491\n",
+    "- True Negative = 481\n",
+    "- False Positive = 19\n",
+    "- False Negative = 9\n",
+    "\n",
+    "гэж гарсан.\n",
+    "\n",
+    "Энэ нь боловсруулсан Наив Байесын загвар спам и-мэйл илрүүлэхэд өндөр үр ашигтай байгааг харуулж байна.\n",
+    "\n",
+    "# Дүгнэлт "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "1becf037",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/latex": [
+       "\\begin{enumerate}\n",
+       "\\item Сургалтын өгөгдлөөс 27865 ширхэг өвөрмөц үг илрүүлэв.\n",
+       "\\item Наив Байесын загвар 97.20 хувийн нарийвчлалтай ажиллав.\n",
+       "\\item Precision 96.27 хувь байв.\n",
+       "\\item Recall 98.20 хувь байв.\n",
+       "\\item 1000 и-мэйлээс 972 ширхгийг зөв ангилсан.\n",
+       "\\end{enumerate}"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from IPython.display import (\n",
+    "    display_latex,\n",
+    "    Latex\n",
+    ")\n",
+    "\n",
+    "latex_code = (\n",
+    "    \"\\\\begin{enumerate}\\n\"\n",
+    "    +\n",
+    "    \"\\n\".join(\n",
+    "        f\"\\\\item {text}\"\n",
+    "        for text in conclusion\n",
+    "    )\n",
+    "    +\n",
+    "    \"\\n\\\\end{enumerate}\"\n",
+    ")\n",
+    "\n",
+    "display_latex(\n",
+    "    Latex(\n",
+    "        latex_code\n",
+    "    )\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "be5d68e7",
+   "metadata": {},
+   "source": [
+    "# Багийн гишүүдийн оролцоо \n",
+    "\n",
+    "| Гишүүн | Үүрэг |\n",
+    "|---|---|\n",
+    "| Б.Билгүүн | Алгоритм хэрэгжүүлэлт, GitHub |\n",
+    "| Гишүүн 2 | Өгөгдөл бэлтгэл |\n",
+    "| Гишүүн 3 | Үнэлгээ |\n",
+    "| Гишүүн 4 | Тайлан |\n",
+    "| Гишүүн 5 | Танилцуулга |\n",
+    "\n",
+    "# Ашигласан материал \n",
+    "\n",
+    "1. Manning, C. D. Introduction to Information Retrieval.\n",
+    "2. Python documentation.\n",
+    "3. Course materials.\n",
+    "4. Dataset documentation."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "spam-filter",
+   "language": "python",
+   "name": "spam-filter",
+   "path": "/Users/bilguunbatbaatar/Library/Jupyter/kernels/spam-filter"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
